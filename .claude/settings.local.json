@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import sys; sys.path.insert\\(0, ''code''\\); from framework.agent import SyntheticAgent; from framework.pipeline import Pipeline; from framework.environment import Task; from random import Random; p = Pipeline\\([SyntheticAgent\\(''a'', [''x''], {''x'':1.0}, confidence_noise=0.0\\), SyntheticAgent\\(''b'', [''x''], {''x'':1.0}, confidence_noise=0.0\\)]\\); t, o = p.run\\(Task\\(task_id=''t'', payload={}\\), Random\\(0\\)\\); print\\(''reward='', o.reward, ''steps='', [s.agent_name for s in t.steps]\\)\")",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(command -v python3.11 python3.12 python3.10)",
+      "Bash(ls /opt/homebrew/bin/python*)",
+      "Read(//Library/Frameworks/Python.framework/**)",
+      "Bash(/opt/homebrew/bin/python3.13 -c \"import pytest; print\\(pytest.__version__\\)\")",
+      "Bash(/opt/homebrew/bin/python3.13 -c \"import yaml; print\\(yaml.__version__\\)\")",
+      "Bash(/opt/homebrew/bin/python3.13 -m venv /Users/atharva/MARL/.venv)",
+      "Bash(/Users/atharva/MARL/.venv/bin/pip install:*)",
+      "Bash(/Users/atharva/MARL/.venv/bin/python -c \"import pytest, yaml; print\\(''pytest'', pytest.__version__, ''yaml'', yaml.__version__\\)\")",
+      "Bash(.venv/bin/python -m pytest code/framework/tests -v)",
+      "Bash(.venv/bin/python -m pytest code/framework/tests -q)",
+      "Bash(.venv/bin/python code/experiments/rq3_e2e_vs_counterfactual.py --config code/experiments/configs/smoke.yaml)"
+    ]
+  }
+}
