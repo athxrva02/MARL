@@ -1,8 +1,14 @@
 # Framework Design — Credit-Assignment Research Testbed for AIDI
 
-Status: Phase-1 scaffold, end-to-end + counterfactual credit implemented and
-tested. 25/25 unit tests pass; smoke experiment runs in seconds on commodity
-hardware.
+Status: Phase-2 scaffold. The framework now reflects the faithful AIDI
+architecture: Supervisor as orchestrator (`RefinementLoop`), 3 top-level agents with the
+CodeAgent realized as a nested `CompositeAgent` sub-pipeline
+(Schema → Builder → Validator → QA), and four credit methods: end-to-end
+(baseline), counterfactual (leave-one-out), validator-anchored
+(structured-signal hierarchical), and iteration-discounted (temporal
+weighting across refinement iterations). 40/40 unit tests pass; two smoke
+experiments (flat 4-agent and supervised refinement) run in seconds on
+commodity hardware.
 
 This document is an architecture decision record (ADR) for the simulation
 framework in [`code/framework/`](../code/framework/). It exists because
@@ -81,6 +87,50 @@ Soft-Bernoulli update `α += credit; β += 1 − credit` is mathematically
 well-defined (it matches the expected sufficient statistic for a
 fractional observation) and avoids the discretization artefacts you get
 from a hard threshold at 0.5.
+
+### 2.6 `CompositeAgent` — a pipeline that *is* an Agent
+
+AIDI's real `CodeAgent` is itself a pipeline (Schema → Builder → Validator
+→ QA). Modelling it as a flat peer of DocAnalysis / LogParser was
+structurally wrong: the Validator's per-step verdict is a *structured*
+credit signal that flat credit methods cannot use. We therefore introduce
+`CompositeAgent`, which:
+
+- Implements the `Agent` protocol externally (single `act(obs, rng)`).
+- Runs a nested `Pipeline` internally and embeds the full sub-trace in its
+  `AgentOutput.value` (via `CompositeOutput`).
+- Exposes `sub_trace_of(output)` so hierarchical credit assigners (e.g.
+  `ValidatorAnchoredCredit`) can descend into the composite without
+  breaking the flat-assigner contract.
+
+Flat credit methods (`EndToEndCredit`, `CounterfactualCredit`) treat a
+composite as a single unit — their credit goes to the composite, and the
+experiment runner propagates it uniformly to all leaves for learner
+updates. Hierarchical methods override `_composite_credit(sub_trace)` to
+use the structured signal.
+
+### 2.7 `RefinementLoop` — Supervisor as orchestrator, not peer
+
+Real AIDI runs a LangGraph of the form:
+
+```
+Doc → Log → Code → DecisionEngine ─complete─► End
+                         │
+                         └─refine─► Doc (with clarification)
+```
+
+`RefinementLoop` captures the two features that matter for credit:
+
+1. The same agents may run multiple times on the same task.
+2. The decision to refine vs stop is itself a choice with credit
+   implications.
+
+Its episode-level record is `EpisodeRun = list[Iteration] + final_outcome`.
+Trace-level credit assigners (`end_to_end`, `counterfactual`,
+`validator_anchored`) consume the final iteration's trace; episode-level
+assigners (`IterationDiscountedCredit`) consume the whole `EpisodeRun`.
+The experiment runner dispatches on the assigner's shape — see
+`rq3_supervised.TRACE_METHODS` vs `EPISODE_METHODS`.
 
 ## 3. Key design decisions
 
@@ -172,40 +222,78 @@ Remedies to investigate in the next iteration:
   cheap enough; provides a principled alternative. The `CreditAssigner`
   protocol accepts it unchanged.
 
+### 3.6 Supervised-refinement smoke results (revised architecture)
+
+Smoke experiment (`code/experiments/configs/supervised_smoke.yaml`,
+5 seeds, 400 episodes, 3 top-level agents, CodeAgent as a 4-stage
+composite, 40% blame-injection rate over 6 leaves):
+
+| method               | mean reward  | mean iters | blame-attr. acc |
+|----------------------|--------------|------------|-----------------|
+| end_to_end           | 0.206 ± 0.02 | 1.89       | 0.161 ± 0.031   |
+| counterfactual       | 0.183 ± 0.02 | 1.90       | 0.227 ± 0.024   |
+| validator_anchored   | 0.225 ± 0.03 | 1.87       | 0.301 ± 0.050   |
+| iteration_discounted | 0.223 ± 0.04 | 1.87       | **0.465 ± 0.015** |
+
+Chance baseline is 1/6 ≈ 0.167. Observations:
+
+- `end_to_end` is at chance — as expected for a method that cannot
+  differentiate agents.
+- `counterfactual` recovers a real but modest signal (~36% above chance).
+- `validator_anchored` roughly doubles accuracy over end-to-end by
+  exploiting the ValidatorAgent's structured verdict inside the
+  composite. This is the cheapest hierarchical method and should be
+  the first thing plugged into real AIDI.
+- `iteration_discounted` wins decisively (~2.9× chance). Planted-blame
+  agents fail repeatedly across all refinement iterations; honest
+  stochastic agents do not. Temporal repetition is a strong, cheap
+  signal that no pure single-trace method can see.
+
+Implication for AIDI: **iteration-aware credit should be activated
+together with any trace-level method** when the refinement loop is in
+play. The two are complementary — one uses cross-iteration repetition,
+the other uses within-iteration structure.
+
 ## 4. Directory layout
 
 ```
 MARL/
 ├── code/
 │   ├── framework/
-│   │   ├── agent.py                # Agent protocol + SyntheticAgent
-│   │   ├── environment.py          # Task, Outcome, default_outcome
-│   │   ├── pipeline.py             # Pipeline, Trace, TraceStep
-│   │   ├── experiment.py           # run_episode, EpisodeRecord, RunResult
+│   │   ├── agent.py                  # Agent protocol + SyntheticAgent
+│   │   ├── composite_agent.py        # CompositeAgent (nested pipeline)
+│   │   ├── refinement.py             # RefinementLoop, EpisodeRun, DecisionPolicy
+│   │   ├── environment.py            # Task, Outcome, default_outcome
+│   │   ├── pipeline.py               # Pipeline, Trace, TraceStep
+│   │   ├── experiment.py             # run_episode, EpisodeRecord, RunResult
 │   │   ├── credit/
-│   │   │   ├── base.py             # CreditAssigner protocol
-│   │   │   ├── end_to_end.py       # EndToEndCredit (baseline)
-│   │   │   ├── counterfactual.py   # CounterfactualCredit (leave-one-out)
-│   │   │   └── cascading_confidence.py  # stub; interface compat
+│   │   │   ├── base.py               # CreditAssigner protocol
+│   │   │   ├── end_to_end.py         # EndToEndCredit (baseline)
+│   │   │   ├── counterfactual.py     # CounterfactualCredit (leave-one-out)
+│   │   │   ├── validator_anchored.py # Hierarchical (uses Validator verdict)
+│   │   │   ├── iteration_discounted.py # Episode-level, γ^k weighting
+│   │   │   └── cascading_confidence.py # stub; interface compat
 │   │   ├── learner/
-│   │   │   ├── base.py             # Learner protocol
-│   │   │   └── bayesian.py         # BetaBernoulliThompson
-│   │   └── tests/                  # 25 tests, all passing
+│   │   │   ├── base.py               # Learner protocol
+│   │   │   └── bayesian.py           # BetaBernoulliThompson
+│   │   └── tests/                    # 40 tests, all passing
 │   ├── aidi_instance/
-│   │   └── four_agent_pipeline.py  # DocumentAnalysis -> LogParser
-│   │                               #   -> Supervisor -> CodeAgent
+│   │   ├── four_agent_pipeline.py    # legacy flat 4-agent pipeline
+│   │   └── supervised_pipeline.py    # faithful AIDI: Supervisor + composite
 │   ├── experiments/
-│   │   ├── rq3_e2e_vs_counterfactual.py
+│   │   ├── rq3_e2e_vs_counterfactual.py   # legacy flat experiment
+│   │   ├── rq3_supervised.py              # revised: all 4 credit methods
 │   │   ├── configs/smoke.yaml
-│   │   └── results/<exp_name>/     # summary.csv, summary.json
-│   └── requirements.txt            # pytest, PyYAML
+│   │   ├── configs/supervised_smoke.yaml
+│   │   └── results/<exp_name>/       # summary.csv, summary.json
+│   └── requirements.txt              # pytest, PyYAML
 ├── docs/
 │   ├── assignment.md
-│   ├── AIDI_Internship_Proposal 1.pdf
-│   ├── framework_design.md         # this file
-│   └── survey.md                   # literature review
+│   ├── Proposal.pdf
+│   ├── framework_design.md           # this file
+│   └── survey.md                     # literature review
 ├── papers/Papers.csv
-└── .venv/                          # local Python 3.13 env
+└── .venv/                            # local Python 3.13 env
 ```
 
 ## 5. How to run
@@ -218,10 +306,15 @@ python3.13 -m venv .venv
 # Unit tests
 .venv/bin/python -m pytest code/framework/tests -q
 
-# Smoke experiment
+# Legacy flat smoke experiment (4-agent pipeline, 2 credit methods)
 .venv/bin/python code/experiments/rq3_e2e_vs_counterfactual.py \
     --config code/experiments/configs/smoke.yaml
 # -> code/experiments/results/rq3_smoke/{summary.csv,summary.json}
+
+# Revised supervised-refinement smoke experiment (all 4 credit methods)
+.venv/bin/python code/experiments/rq3_supervised.py \
+    --config code/experiments/configs/supervised_smoke.yaml
+# -> code/experiments/results/rq3_supervised_smoke/{summary.csv,summary.json}
 ```
 
 ## 6. Non-goals (for this iteration)

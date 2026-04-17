@@ -10,10 +10,14 @@ from framework.credit.base import CreditAssigner
 from framework.credit.cascading_confidence import CascadingConfidence
 from framework.credit.counterfactual import CounterfactualCredit
 from framework.credit.end_to_end import EndToEndCredit
+from framework.credit.iteration_discounted import IterationDiscountedCredit
+from framework.credit.validator_anchored import ValidatorAnchoredCredit
 
 __all__ = [
     "CascadingConfidence",
     "CounterfactualCredit",
     "CreditAssigner",
     "EndToEndCredit",
+    "IterationDiscountedCredit",
+    "ValidatorAnchoredCredit",
 ]

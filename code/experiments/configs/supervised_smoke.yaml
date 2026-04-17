@@ -1,0 +1,41 @@
+# Smoke configuration for the revised RQ3 experiment (faithful AIDI
+# architecture: Supervisor-orchestrated refinement loop over
+# Doc -> LogParser -> CodeAgent(Schema->Builder->Validator->QA)).
+#
+# Small N so the smoke run is fast. Blame is planted on any LEAF agent
+# (including those inside the CodeAgent sub-pipeline), letting us test
+# whether hierarchical credit methods (validator_anchored) recover
+# inside-composite blame that flat methods cannot.
+
+experiment:
+  name: rq3_supervised_smoke
+  seed: 20260417
+  n_episodes: 400
+  n_seeds: 5
+
+pipeline:
+  kind: aidi_supervisor
+  upstream_failure_penalty: 0.4
+  code_silent_failure_rate: 0.25
+  max_iterations: 3
+
+learner:
+  kind: beta_bernoulli_thompson
+  alpha0: 1.0
+  beta0: 1.0
+
+credit_methods:
+  - kind: end_to_end
+  - kind: counterfactual
+    n_samples: 4
+  - kind: validator_anchored
+    validator_name: ValidatorAgent
+  - kind: iteration_discounted
+    gamma: 0.7
+
+blame_injection:
+  # 40% of episodes plant blame on a random LEAF agent (top-level OR inside
+  # CodeAgent). Degraded_p = 0.05 makes that agent nearly deterministically
+  # fail -> a good attribution target for the methods under test.
+  rate: 0.4
+  degraded_p: 0.05

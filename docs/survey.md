@@ -10,12 +10,21 @@
 
 ## 1. Problem statement
 
-AIDI is a sequential, role-specialised LLM pipeline:
+AIDI is a Supervisor-orchestrated refinement loop over three top-level
+agents, where the CodeAgent is itself a composite sub-pipeline:
 
 ```
-  DocumentAnalysisAgent → LogParserAgent → DocumentOnboardingSupervisor → CodeAgent
-           (RAG)             (Drain3+LLM)        (orchestration)          (regex for Cribl)
+  Supervisor (RefinementLoop; max 3 iterations, DecisionEngine stops / refines)
+    └── DocumentAnalysisAgent → LogParserAgent → CodeAgent (composite)
+                                                  └── Schema → Builder → Validator → QA
 ```
+
+Initial framing in this survey treated the flow as a flat 4-agent
+pipeline (`Doc → Log → Supervisor → CodeAgent`). That was structurally
+wrong: the Supervisor is an orchestrator (a `GraphOrchestrator` in real
+code), not a peer, and the CodeAgent is a nested pipeline whose
+ValidatorAgent produces a *structured* credit signal. Phase-2 experiments
+use the faithful architecture; results for both are reported below.
 
 When an extraction fails, **which agent should the learner blame, and by
 how much?** The internship proposal lists three candidates (end-to-end,
@@ -113,6 +122,8 @@ H4. **Exact Shapley at N=4 will dominate leave-one-out for cleanliness of the pe
 
 ## 5. Empirical findings to date
 
+### 5.1 Phase-1 (flat 4-agent pipeline)
+
 From `code/experiments/results/rq3_smoke/`:
 
 | method         | late mean reward | blame-attr. acc (planted blame) |
@@ -120,11 +131,52 @@ From `code/experiments/results/rq3_smoke/`:
 | end_to_end     | 0.186 ± 0.03     | 0.259 ± 0.024                    |
 | counterfactual | 0.154 ± 0.03     | 0.280 ± 0.026                    |
 
-And a 1500-episode no-blame run (5 seeds): **end-to-end 0.416 vs counterfactual 0.239 late mean reward.**
+1500-episode no-blame run (5 seeds): **end-to-end 0.416 vs counterfactual 0.239 late mean reward.**
 
-**Preliminary conclusion:** on this pipeline and with a Beta-Bernoulli learner, **leave-one-out counterfactual credit as naively formulated is *worse* than end-to-end baseline**. The counterfactual signal clusters around 0.5 and the Bayesian posterior barely moves per episode. This confirms H2 and motivates the remedies in [framework_design.md §3.5](framework_design.md).
+**Finding 1:** on a flat pipeline with a Beta-Bernoulli learner,
+leave-one-out counterfactual credit as naively formulated is *worse* than
+end-to-end baseline. The counterfactual signal clusters around 0.5 and
+the Bayesian posterior barely moves per episode. Confirms H2; motivates
+the remedies in [framework_design.md §3.5](framework_design.md).
 
-This is an honest negative result worth reporting in the final deliverable — it challenges the assumption (implicit in the internship proposal) that fancier credit methods will out-learn the baseline by default.
+### 5.2 Phase-2 (faithful Supervisor + refinement loop + composite CodeAgent)
+
+From `code/experiments/results/rq3_supervised_smoke/` (5 seeds × 400
+episodes, 40% blame-injection on any of the 6 leaf agents including those
+inside the CodeAgent composite; chance = 1/6 ≈ 0.167):
+
+| method                  | mean reward   | mean iters | blame-attr. acc   |
+|-------------------------|---------------|------------|-------------------|
+| end_to_end              | 0.206 ± 0.02  | 1.89       | 0.161 ± 0.031     |
+| counterfactual          | 0.183 ± 0.02  | 1.90       | 0.227 ± 0.024     |
+| validator_anchored      | 0.225 ± 0.03  | 1.87       | 0.301 ± 0.050     |
+| **iteration_discounted**| 0.223 ± 0.04  | 1.87       | **0.465 ± 0.015** |
+
+**Finding 2:** iteration-discounted credit dominates (~2.9× chance,
+~2.9× end-to-end). Planted-blame agents fail repeatedly across the
+refinement loop's iterations; honest stochastic agents do not. Temporal
+repetition is a strong, cheap attribution signal that no pure
+single-trace method can observe.
+
+**Finding 3:** validator-anchored credit roughly doubles attribution
+accuracy over end-to-end by exploiting the ValidatorAgent's structured
+per-step verdict inside the composite. This is the cheapest *structural*
+method and directly exploits AIDI's architecture (not a general solver).
+
+**Finding 4:** the two dominant methods are **complementary** — one
+uses cross-iteration repetition, the other within-iteration structure.
+This strongly suggests a future method that combines both should be
+measured.
+
+### 5.3 Implication
+
+The Phase-1 negative result on counterfactual credit does not
+generalise to the faithful architecture. Once we respect the real
+pipeline shape (refinement loop + composite) and adopt credit methods
+that exploit each, per-agent attribution accuracy nearly triples. The
+right question for the intern's next phase is not "does counterfactual
+beat end-to-end?" but "how do we combine iteration-discounting with a
+structural hierarchical method?"
 
 ## 6. Proposed next experiments
 
@@ -136,17 +188,21 @@ This is an honest negative result worth reporting in the final deliverable — i
 | E4  | **Exact Shapley** over the 16 coalitions | Axiomatic baseline; more expensive but principled |
 | E5  | Cascading-confidence with the CodeAgent's silent-failure mode on vs. off | Quantify H3 |
 | E6  | Sweep pipeline depth N ∈ {3, 4, 6, 8} × methods | Test H1 |
+| E7  | **Hybrid iteration × validator**: multiply iteration-discounted by validator-anchored | Test whether complementary methods compose |
+| E8  | **Max-iterations sweep** (1, 2, 3, 5) for iteration_discounted | Quantify how much of its win comes from the loop vs. γ |
+| E9  | **Sub-agent blame inside CodeAgent** (planted only on Schema/Builder/Validator/QA) | Isolate hierarchical vs. top-level attribution |
 
 Each is one additional `CreditAssigner` class + one YAML; no framework
 refactor needed.
 
 ## 7. Recommendations for the internship's implementation phase
 
-1. **Do not default to activating counterfactual credit in production.** The naive version is worse than end-to-end in the simulation; further tuning is required before betting LLM spend on it.
-2. **Ship end-to-end + Beta-Bernoulli Thompson first.** It already out-learns in the current experiments and matches AIDI's dormant `BayesianAttributeLearner` cleanly.
-3. **Reserve counterfactual for offline analysis / debugging first.** Use it to diagnose which agent is most limiting on a held-out set, before wiring it into the online training loop.
-4. **Log per-agent confidences persistently** even while cascading-confidence is not the training signal. They become a cheap feature for later learners (RQ2 contextual bandits) and for post-hoc attribution.
-5. **Treat Who&When-style step-level attribution as a stretch goal.** Aim first for agent-level credit that learns policies; step-level blame is a harder problem that may not move the business metric.
+1. **Activate iteration-discounted credit first** — it is the single cheapest change with the largest measured attribution gain (2.9× chance). It needs only the existing refinement-loop logs, no new signals from the agents.
+2. **Layer validator-anchored credit on top** inside the CodeAgent. The ValidatorAgent already produces the structured signal the method consumes; nothing new needs to be computed. This doubles flat-method accuracy at zero additional LLM cost.
+3. **Do not default to activating naive counterfactual credit in production.** Phase-1 showed it is worse than end-to-end on a flat pipeline; Phase-2 showed it is modest on the faithful pipeline. Use it for offline debugging/analysis, not the online training signal, until the baseline-subtraction / difference-rewards variants in §6 have been measured.
+4. **Ship end-to-end + Beta-Bernoulli Thompson as the safety-net baseline.** It matches AIDI's dormant `BayesianAttributeLearner` cleanly and is monotonic — useful when the richer methods have not been tuned for a new pipeline shape.
+5. **Log per-agent confidences persistently** even while cascading-confidence is not the training signal. They become a cheap feature for later learners (RQ2 contextual bandits) and for post-hoc attribution.
+6. **Treat Who&When-style step-level attribution as a stretch goal.** Aim first for agent-level credit that learns policies; step-level blame is a harder problem that may not move the business metric.
 
 ## 8. Open questions for supervisors (Akash / Kwidama / Tom Viering)
 
