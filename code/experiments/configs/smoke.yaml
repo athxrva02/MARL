@@ -1,0 +1,33 @@
+# Smoke configuration for RQ3 experiment.
+#
+# Small N, 4-agent AIDI pipeline, intentionally small so the run is fast
+# and the verification assertions in the plan (80% attribution accuracy
+# for counterfactual, ~25% for end-to-end) are reachable in seconds.
+
+experiment:
+  name: rq3_smoke
+  seed: 20260417
+  n_episodes: 400
+  n_seeds: 5            # repeats per (method × seed)
+  eval_window: 100      # sliding-window for learning-curve plots
+
+pipeline:
+  kind: aidi_4agent
+  upstream_failure_penalty: 0.4
+  code_silent_failure_rate: 0.3
+
+learner:
+  kind: beta_bernoulli_thompson
+  alpha0: 1.0
+  beta0: 1.0
+
+credit_methods:
+  - kind: end_to_end
+  - kind: counterfactual
+    n_samples: 4
+
+blame_injection:
+  # Each task has a 40% chance of planting blame on a random agent; on those
+  # tasks that agent's p_success is temporarily dropped to `degraded_p`.
+  rate: 0.4
+  degraded_p: 0.05
