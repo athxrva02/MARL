@@ -1,6 +1,6 @@
 """AIDI-shaped 4-agent pipeline used by the RQ3 experiments.
 
-Pipeline order (per [docs/AIDI_Internship_Proposal 1.pdf] and user
+Pipeline order (per [docs/Proposal.pdf] and user
 clarification):
 
     DocumentAnalysisAgent  -> extracts security events
