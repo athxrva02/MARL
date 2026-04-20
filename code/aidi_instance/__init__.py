@@ -9,6 +9,7 @@ Two instances are provided:
   (composite).
 """
 
+from aidi_instance.feature_aware_pipeline import build_feature_aware_pipeline
 from aidi_instance.four_agent_pipeline import build_aidi_pipeline
 from aidi_instance.supervised_pipeline import (
     BEST_ACTIONS,
@@ -22,5 +23,6 @@ __all__ = [
     "build_aidi_pipeline",
     "build_aidi_supervisor",
     "build_code_subpipeline",
+    "build_feature_aware_pipeline",
     "build_supervisor_pipeline",
 ]

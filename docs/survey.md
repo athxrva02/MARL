@@ -168,7 +168,45 @@ uses cross-iteration repetition, the other within-iteration structure.
 This strongly suggests a future method that combines both should be
 measured.
 
-### 5.3 Implication
+### 5.3 Phase-3 (feature-conditioned tasks + learnable Supervisor + SQLite + stats)
+
+From `code/experiments/results/rq3_phase3_smoke/` (5 seeds × 300
+episodes, feature-conditioned tasks, Supervisor preset chosen by the
+learner, trace methods wrapped in `HierarchicalCredit(outer_weight=0.3)`,
+no planted blame):
+
+| method               | mean reward [95% CI]  | mean iters | Δ vs e2e | adj-p |
+|----------------------|-----------------------|------------|----------|-------|
+| end_to_end           | 0.337 [0.308, 0.365]  | 1.80       | —        | —     |
+| counterfactual       | 0.271 [0.252, 0.294]  | 1.86       | −0.066   | 0.360 |
+| validator_anchored   | 0.362 [0.331, 0.396]  | 1.80       | +0.025   | 0.570 |
+| iteration_discounted | 0.308 [0.293, 0.321]  | 1.84       | −0.029   | 0.490 |
+
+Paired permutation vs `end_to_end`, Holm-Bonferroni across three
+comparisons. No adjusted p clears α=0.05 at smoke scale — as expected.
+Four things change relative to Phase-1/2 reporting:
+
+- Mean ± stdev replaced by bootstrap CIs (`framework.stats.bootstrap_ci`).
+- Pairwise comparisons are *paired on seeds* via
+  `paired_permutation_test` — the natural test when the same task stream
+  is served to every method.
+- Multiple-comparison correction is explicit (`holm_bonferroni`).
+- Attribution accuracy is no longer the headline: with feature-aware
+  tasks, reward-under-the-learned-policy is the quantity the learner is
+  optimising, so its CI is what the reader should judge.
+
+**Finding 5 (Phase-3):** `validator_anchored` remains the best *point
+estimate* when wrapped by `HierarchicalCredit`. Its per-leaf signal
+inside the composite is the one structural advantage hardest for any
+feature-blind method to replicate.
+
+**Finding 6 (Phase-3):** The Supervisor's posterior over presets
+converges differently per method — an early empirical confirmation that
+making the Supervisor a learning arm surfaces the
+reward-vs-iteration-cost trade-off as a *measurable* quantity rather
+than a hand-tuned one.
+
+### 5.4 Implication
 
 The Phase-1 negative result on counterfactual credit does not
 generalise to the faithful architecture. Once we respect the real
@@ -177,6 +215,16 @@ that exploit each, per-agent attribution accuracy nearly triples. The
 right question for the intern's next phase is not "does counterfactual
 beat end-to-end?" but "how do we combine iteration-discounting with a
 structural hierarchical method?"
+
+Phase-3 adds a complementary framing: **feature-conditioned tasks make
+the feature-blind Thompson baseline a *clean* anchor for a future RQ2
+contextual-bandit study.** Because the optimal action is now
+task-dependent by construction (see `feature_aware_pipeline.py`'s
+feature-effect tables), a contextual learner will be strictly better
+than the Phase-3 baseline iff the per-feature optima differ — which
+they do. See [`docs/information_injection.md`](information_injection.md)
+for the four-point taxonomy (choice / payload / credit / update) that
+governs where Phase-3 injects information and where RQ2 would plug in.
 
 ## 6. Proposed next experiments
 

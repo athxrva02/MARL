@@ -1,0 +1,61 @@
+# Phase-3 smoke configuration.
+#
+# Wires the full stack: feature-aware agents, TaskGenerator,
+# SupervisorAgent learning arm, HierarchicalCredit-wrapped trace methods,
+# SQLite persistence, and a paired-permutation / Holm-Bonferroni summary
+# vs the end_to_end baseline.
+#
+# Small N so a full run finishes in seconds. Bump n_episodes and n_seeds
+# before drawing any conclusions.
+
+experiment:
+  name: rq3_phase3_smoke
+  seed: 20260420
+  n_episodes: 300
+  n_seeds: 5
+  baseline: end_to_end
+  snapshot_every: 100
+  bootstrap_resamples: 2000
+  permutation_resamples: 2000
+  alpha: 0.05
+
+pipeline:
+  upstream_failure_penalty: 0.4
+  code_silent_failure_rate: 0.25
+  # Used to scale the Supervisor's iteration-cost penalty; should match or
+  # exceed the max_iterations of the most conservative preset.
+  max_iterations_hint: 5
+
+learner:
+  kind: beta_bernoulli_thompson
+  alpha0: 1.0
+  beta0: 1.0
+
+tasks:
+  doc_size_probs:
+    small: 0.4
+    medium: 0.4
+    large: 0.2
+  log_volume_probs:
+    low: 0.3
+    medium: 0.5
+    high: 0.2
+  pii_prob: 0.2
+
+# Each trace-level method is wrapped with HierarchicalCredit by default
+# (see rq3_phase3.py::_build_method). To disable wrapping, set
+# `hierarchical: false` on that method. `inner` overrides the inner
+# assigner; if absent, the outer kind is reused inside.
+credit_methods:
+  - kind: end_to_end
+
+  - kind: counterfactual
+    n_samples: 4
+    outer_weight: 0.3
+
+  - kind: validator_anchored
+    validator_name: ValidatorAgent
+    outer_weight: 0.3
+
+  - kind: iteration_discounted
+    gamma: 0.7
