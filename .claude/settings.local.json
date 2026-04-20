@@ -13,7 +13,29 @@
       "Bash(/Users/atharva/MARL/.venv/bin/python -c \"import pytest, yaml; print\\(''pytest'', pytest.__version__, ''yaml'', yaml.__version__\\)\")",
       "Bash(.venv/bin/python -m pytest code/framework/tests -v)",
       "Bash(.venv/bin/python -m pytest code/framework/tests -q)",
-      "Bash(.venv/bin/python code/experiments/rq3_e2e_vs_counterfactual.py --config code/experiments/configs/smoke.yaml)"
+      "Bash(.venv/bin/python code/experiments/rq3_e2e_vs_counterfactual.py --config code/experiments/configs/smoke.yaml)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python -m pytest framework/tests/ -x -q)",
+      "Bash(python code/experiments/rq3_supervised.py --config code/experiments/configs/supervised_smoke.yaml)",
+      "Bash(source /Users/atharva/MARL/.venv/bin/activate)",
+      "Bash(python -m pytest framework/tests/ -q)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git restore:*)",
+      "Bash(gh pr:*)",
+      "Bash(/opt/homebrew/bin/gh pr:*)",
+      "Bash(python -m pytest framework/tests/test_supervisor_agent.py -q)",
+      "Bash(python -m pytest framework/tests/test_hierarchical.py -q)",
+      "Bash(python -m pytest framework/tests/test_task_features.py -q)",
+      "Bash(python -m pytest framework/tests/test_persistence.py -q)",
+      "Bash(python -m pytest framework/tests/test_stats.py -q)",
+      "Bash(python -m pytest code/framework/tests/test_phase3_integration.py -x -q)",
+      "Bash(python -m pytest code/framework/tests/ -q)",
+      "Bash(python code/experiments/rq3_phase3.py --config code/experiments/configs/phase3_smoke.yaml)",
+      "Bash(wc -l /Users/atharva/MARL/docs/*.md)"
     ]
   }
 }
