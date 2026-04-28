@@ -59,3 +59,7 @@ credit_methods:
 
   - kind: iteration_discounted
     gamma: 0.7
+
+  - kind: self_distillation
+    temperature: 1.0
+    outer_weight: 0.3
