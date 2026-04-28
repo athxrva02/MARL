@@ -49,6 +49,7 @@ from framework.credit import (  # noqa: E402
     EndToEndCredit,
     HierarchicalCredit,
     IterationDiscountedCredit,
+    SelfDistillationCredit,
     ValidatorAnchoredCredit,
 )
 from framework.environment import Task  # noqa: E402
@@ -78,7 +79,7 @@ from framework.task_generator import (  # noqa: E402
 )
 
 
-TRACE_METHODS = {"end_to_end", "counterfactual", "validator_anchored"}
+TRACE_METHODS = {"end_to_end", "counterfactual", "validator_anchored", "self_distillation"}
 EPISODE_METHODS = {"iteration_discounted"}
 
 
@@ -93,6 +94,11 @@ def _build_assigner(kind: str, spec: dict):
         )
     if kind == "iteration_discounted":
         return IterationDiscountedCredit(gamma=float(spec.get("gamma", 0.7)))
+    if kind == "self_distillation":
+        return SelfDistillationCredit(
+            temperature=float(spec.get("temperature", 1.0)),
+            eps=float(spec.get("eps", 1e-3)),
+        )
     raise ValueError(f"Unknown credit kind: {kind!r}")
 
 

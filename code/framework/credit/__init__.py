@@ -12,6 +12,7 @@ from framework.credit.counterfactual import CounterfactualCredit
 from framework.credit.end_to_end import EndToEndCredit
 from framework.credit.hierarchical import HierarchicalCredit
 from framework.credit.iteration_discounted import IterationDiscountedCredit
+from framework.credit.self_distillation import SelfDistillationCredit
 from framework.credit.validator_anchored import ValidatorAnchoredCredit
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "EndToEndCredit",
     "HierarchicalCredit",
     "IterationDiscountedCredit",
+    "SelfDistillationCredit",
     "ValidatorAnchoredCredit",
 ]

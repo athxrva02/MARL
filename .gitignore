@@ -1,0 +1,15 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Experiment results (generated; not source)
+code/experiments/results/
+
+# Common dev artifacts
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.env
+*.sqlite
